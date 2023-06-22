@@ -122,6 +122,16 @@ class RequestStore:
         """
         self._data_requests.discard(data_id)
 
+    def clear_data_requests(self):
+        self._data_requests.clear()
+
+    def clear_get_requests(self):
+        self._blocking_get_requests.clear()
+        self._nonblocking_get_requests.clear()
+
+    def clear_wait_requests(self):
+        self._blocking_wait_requests.clear()
+
     def check_pending_get_requests(self, data_ids):
         """
         Check if `GET` event on this `data_ids` is waiting to be processed.
