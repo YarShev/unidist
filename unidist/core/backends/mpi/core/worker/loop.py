@@ -94,23 +94,25 @@ async def worker_loop():
         w_logger.debug("common.Operation processing - {}".format(operation_type))
 
         # Proceed the request
-        if operation_type == common.Operation.EXECUTE and not shutdown_posted:
+        if operation_type == common.Operation.EXECUTE:
             request = communication.recv_complex_data(mpi_state.comm, source_rank)
 
-            # Execute the task if possible
-            pending_request = task_store.process_task_request(request)
-            if pending_request:
-                task_store.put(pending_request)
-            else:
-                # Check pending requests. Maybe some data became available.
-                task_store.check_pending_tasks()
+            if not shutdown_posted:
+                # Execute the task if possible
+                pending_request = task_store.process_task_request(request)
+                if pending_request:
+                    task_store.put(pending_request)
+                else:
+                    # Check pending requests. Maybe some data became available.
+                    task_store.check_pending_tasks()
 
         elif operation_type == common.Operation.GET:
             request = communication.mpi_recv_object(mpi_state.comm, source_rank)
-            request["id"] = object_store.get_unique_data_id(request["id"])
-            request_store.process_get_request(
-                request["source"], request["id"], request["is_blocking_op"]
-            )
+            if not shutdown_posted:
+                request["id"] = object_store.get_unique_data_id(request["id"])
+                request_store.process_get_request(
+                    request["source"], request["id"], request["is_blocking_op"]
+                )
 
         elif operation_type == common.Operation.PUT_DATA:
             request = communication.recv_complex_data(mpi_state.comm, source_rank)
@@ -123,10 +125,11 @@ async def worker_loop():
             # Discard data request to another worker, if data has become available
             request_store.discard_data_request(request["id"])
 
-            # Check pending requests. Maybe some data became available.
-            task_store.check_pending_tasks()
-            # Check pending actor requests also.
-            task_store.check_pending_actor_tasks()
+            if not shutdown_posted:
+                # Check pending requests. Maybe some data became available.
+                task_store.check_pending_tasks()
+                # Check pending actor requests also.
+                task_store.check_pending_actor_tasks()
 
         elif operation_type == common.Operation.PUT_OWNER and not shutdown_posted:
             request = communication.mpi_recv_object(mpi_state.comm, source_rank)
@@ -181,7 +184,6 @@ async def worker_loop():
             async_operations.finish()
             task_store.clear_pending_tasks()
             task_store.clear_pending_actor_tasks()
-            request_store.clear_data_requests()
             request_store.clear_get_requests()
             request_store.clear_wait_requests()
             communication.mpi_send_object(
@@ -197,8 +199,8 @@ async def worker_loop():
                 MPI.Finalize()
             break  # leave event loop and shutdown worker
         elif (
-            operation_type
-            in list(range(common.Operation.EXECUTE, common.Operation.SHUTDOWN + 1))
+            operation_type >= common.Operation.EXECUTE
+            and operation_type <= common.Operation.SHUTDOWN
             and shutdown_posted
         ):
             pass

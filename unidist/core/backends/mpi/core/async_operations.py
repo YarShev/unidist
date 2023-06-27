@@ -68,7 +68,7 @@ class AsyncOperations:
         def is_ready(handler_list):
             return MPI.Request.Testall([h for h, _ in handler_list])
 
-        self._send_async_handlers[:] = [
+        self._send_async_handlers = [
             hl for hl in self._send_async_handlers if not is_ready(hl)
         ]
 
@@ -80,5 +80,5 @@ class AsyncOperations:
             cancel = all(not test for test in tests)
             if cancel:
                 _ = [h.Cancel() for h, _ in handler_list]
-                MPI.Request.Waitall([h for h, _ in handler_list])
+            MPI.Request.Waitall([h for h, _ in handler_list])
         self._send_async_handlers.clear()
