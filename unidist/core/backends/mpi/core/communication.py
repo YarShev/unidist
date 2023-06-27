@@ -228,6 +228,31 @@ def mpi_recv_object(comm, source_rank):
     return comm.recv(source=source_rank)
 
 
+def cancel_mpi_recv_object(comm, source_rank):
+    """
+    Receive an object of a standard Python data type.
+
+    Parameters
+    ----------
+    comm : object
+        MPI communicator object.
+    source_rank : int
+        Source MPI process to receive data from.
+
+    Returns
+    -------
+    object
+        Received data object from another MPI process.
+
+    Notes
+    -----
+    De-serialization is a simple pickle.load in this case
+    """
+    request = comm.irecv(source=source_rank)
+    request.Cancel()
+    request.Wait()
+
+
 def mpi_send_buffer(comm, buffer_size, buffer, dest_rank):
     """
     Send buffer object to another MPI rank in a blocking way.
@@ -536,6 +561,40 @@ def recv_complex_data(comm, source_rank):
 
     # Start unpacking
     return deserializer.deserialize(msgpack_buffer)
+
+
+def cancel_recv_complex_data(comm, source_rank):
+    """
+    Receive the data that may consist of different user provided complex types, lambdas and buffers.
+
+    The data is de-serialized from received buffer.
+
+    Parameters
+    ----------
+    comm : object
+        MPI communicator object.
+    source_rank : int
+        Source MPI process to receive data from.
+
+    Returns
+    -------
+    object
+        Received data object from another MPI process.
+    """
+    # Recv main message pack buffer.
+    # First MPI call uses busy wait loop to remove possible contention
+    # in a long running data receive operations.
+    info = comm.recv(source=source_rank)
+    msgpack_buffer = bytearray(info["s_data_len"])
+    raw_buffers = list(map(bytearray, info["raw_buffers_len"]))
+    with pkl5._bigmpi as bigmpi:
+        request = comm.Irecv(bigmpi(msgpack_buffer), source=source_rank)
+        request.Cancel()
+        request.Wait()
+        for rbuf in raw_buffers:
+            request = comm.Irecv(bigmpi(rbuf), source=source_rank)
+            request.Cancel()
+            request.Wait()
 
 
 # ---------- #

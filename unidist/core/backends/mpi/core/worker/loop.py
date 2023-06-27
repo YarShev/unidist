@@ -97,58 +97,66 @@ async def worker_loop():
         if operation_type == common.Operation.EXECUTE:
             request = communication.recv_complex_data(mpi_state.comm, source_rank)
 
-            if not shutdown_posted:
-                # Execute the task if possible
-                pending_request = task_store.process_task_request(request)
-                if pending_request:
-                    task_store.put(pending_request)
-                else:
-                    # Check pending requests. Maybe some data became available.
-                    task_store.check_pending_tasks()
+            # Execute the task if possible
+            pending_request = task_store.process_task_request(request)
+            if pending_request:
+                task_store.put(pending_request)
+            else:
+                # Check pending requests. Maybe some data became available.
+                task_store.check_pending_tasks()
 
         elif operation_type == common.Operation.GET:
-            request = communication.mpi_recv_object(mpi_state.comm, source_rank)
             if not shutdown_posted:
+                request = communication.mpi_recv_object(mpi_state.comm, source_rank)
                 request["id"] = object_store.get_unique_data_id(request["id"])
                 request_store.process_get_request(
                     request["source"], request["id"], request["is_blocking_op"]
                 )
+            else:
+                communication.cancel_mpi_recv_object(source_rank)
 
         elif operation_type == common.Operation.PUT_DATA:
-            request = communication.recv_complex_data(mpi_state.comm, source_rank)
-            w_logger.debug(
-                "PUT (RECV) {} id from {} rank".format(request["id"]._id, source_rank)
-            )
-            request["id"] = object_store.get_unique_data_id(request["id"])
-            object_store.put(request["id"], request["data"])
-
-            # Discard data request to another worker, if data has become available
-            request_store.discard_data_request(request["id"])
-
             if not shutdown_posted:
+                request = communication.recv_complex_data(mpi_state.comm, source_rank)
+                w_logger.debug(
+                    "PUT (RECV) {} id from {} rank".format(
+                        request["id"]._id, source_rank
+                    )
+                )
+                request["id"] = object_store.get_unique_data_id(request["id"])
+                object_store.put(request["id"], request["data"])
+
+                # Discard data request to another worker, if data has become available
+                request_store.discard_data_request(request["id"])
+
                 # Check pending requests. Maybe some data became available.
                 task_store.check_pending_tasks()
                 # Check pending actor requests also.
                 task_store.check_pending_actor_tasks()
+            else:
+                communication.cancel_recv_complex_data(source_rank)
 
-        elif operation_type == common.Operation.PUT_OWNER and not shutdown_posted:
-            request = communication.mpi_recv_object(mpi_state.comm, source_rank)
-            request["id"] = object_store.get_unique_data_id(request["id"])
-            object_store.put_data_owner(request["id"], request["owner"])
+        elif operation_type == common.Operation.PUT_OWNER:
+            if not shutdown_posted:
+                request = communication.mpi_recv_object(mpi_state.comm, source_rank)
+                request["id"] = object_store.get_unique_data_id(request["id"])
+                object_store.put_data_owner(request["id"], request["owner"])
 
-            w_logger.debug(
-                "PUT_OWNER {} id is owned by {} rank".format(
-                    request["id"]._id, request["owner"]
+                w_logger.debug(
+                    "PUT_OWNER {} id is owned by {} rank".format(
+                        request["id"]._id, request["owner"]
+                    )
                 )
-            )
+            else:
+                communication.cancel_mpi_recv_object()
 
-        elif operation_type == common.Operation.WAIT and not shutdown_posted:
+        elif operation_type == common.Operation.WAIT:
             request = communication.mpi_recv_object(mpi_state.comm, source_rank)
             w_logger.debug("WAIT for {} id".format(request["id"]._id))
             request["id"] = object_store.get_unique_data_id(request["id"])
             request_store.process_wait_request(request["id"])
 
-        elif operation_type == common.Operation.ACTOR_CREATE and not shutdown_posted:
+        elif operation_type == common.Operation.ACTOR_CREATE:
             request = communication.recv_complex_data(mpi_state.comm, source_rank)
             cls = request["class"]
             args = request["args"]
@@ -157,7 +165,7 @@ async def worker_loop():
 
             actor_map[handler] = cls(*args, **kwargs)
 
-        elif operation_type == common.Operation.ACTOR_EXECUTE and not shutdown_posted:
+        elif operation_type == common.Operation.ACTOR_EXECUTE:
             request = communication.recv_complex_data(mpi_state.comm, source_rank)
 
             # Prepare the data
@@ -174,13 +182,13 @@ async def worker_loop():
                 # Check pending requests. Maybe some data became available.
                 task_store.check_pending_actor_tasks()
 
-        elif operation_type == common.Operation.CLEANUP and not shutdown_posted:
+        elif operation_type == common.Operation.CLEANUP:
             cleanup_list = communication.recv_serialized_data(
                 mpi_state.comm, source_rank
             )
             object_store.clear(cleanup_list)
 
-        elif operation_type == common.Operation.CANCEL and not shutdown_posted:
+        elif operation_type == common.Operation.CANCEL:
             async_operations.finish()
             task_store.clear_pending_tasks()
             task_store.clear_pending_actor_tasks()
