@@ -113,7 +113,7 @@ async def worker_loop():
                     request["source"], request["id"], request["is_blocking_op"]
                 )
             else:
-                communication.cancel_mpi_recv_object(source_rank)
+                communication.cancel_mpi_recv_object(mpi_state.comm, source_rank)
 
         elif operation_type == common.Operation.PUT_DATA:
             if not shutdown_posted:
@@ -134,7 +134,7 @@ async def worker_loop():
                 # Check pending actor requests also.
                 task_store.check_pending_actor_tasks()
             else:
-                communication.cancel_recv_complex_data(source_rank)
+                communication.cancel_recv_complex_data(mpi_state.comm, source_rank)
 
         elif operation_type == common.Operation.PUT_OWNER:
             if not shutdown_posted:
@@ -206,15 +206,8 @@ async def worker_loop():
             if not MPI.Is_finalized():
                 MPI.Finalize()
             break  # leave event loop and shutdown worker
-        elif (
-            operation_type >= common.Operation.EXECUTE
-            and operation_type <= common.Operation.SHUTDOWN
-            and shutdown_posted
-        ):
-            pass
         else:
-            w_logger.debug(f"Unsupported operation {operation_type}")
-            raise ValueError("Unsupported operation!")
+            raise ValueError(f"Unsupported operation: {operation_type}")
 
         if not shutdown_posted:
             # Check completion status of previous async MPI routines

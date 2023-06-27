@@ -328,6 +328,27 @@ def mpi_isend_buffer(comm, buffer_size, buffer, dest_rank):
     return requests
 
 
+def mpi_busy_wait_recv(comm, source_rank):
+    """
+    Wait for receive operation result in a custom busy wait loop.
+
+    Parameters
+    ----------
+    comm : object
+        MPI communicator object.
+    source_rank : int
+        Source MPI process to receive data.
+    """
+    backoff = MpiBackoff.get()
+    req_handle = comm.irecv(source=source_rank)
+    while True:
+        status, data = req_handle.test()
+        if status:
+            return data
+        else:
+            time.sleep(backoff)
+
+
 def recv_operation_type(comm):
     """
     Worker receive operation type interface.
@@ -547,7 +568,7 @@ def recv_complex_data(comm, source_rank):
     # Recv main message pack buffer.
     # First MPI call uses busy wait loop to remove possible contention
     # in a long running data receive operations.
-    info = comm.recv(source=source_rank)
+    info = mpi_busy_wait_recv(comm, source_rank)
     msgpack_buffer = bytearray(info["s_data_len"])
     buffer_count = info["buffer_count"]
     raw_buffers = list(map(bytearray, info["raw_buffers_len"]))
@@ -584,7 +605,7 @@ def cancel_recv_complex_data(comm, source_rank):
     # Recv main message pack buffer.
     # First MPI call uses busy wait loop to remove possible contention
     # in a long running data receive operations.
-    info = comm.recv(source=source_rank)
+    info = mpi_busy_wait_recv(comm, source_rank)
     msgpack_buffer = bytearray(info["s_data_len"])
     raw_buffers = list(map(bytearray, info["raw_buffers_len"]))
     with pkl5._bigmpi as bigmpi:
