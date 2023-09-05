@@ -11,6 +11,20 @@ from unidist.core.backends.common.data_id import DataID, is_data_id
 from unidist.config import MpiLog
 
 
+class PendingRequest:
+    def __init__(
+        self,
+        msgpack_buffer,
+        raw_buffers,
+        buffer_count,
+        requests,
+    ):
+        self.msgpack_buffer = msgpack_buffer
+        self.raw_buffers = raw_buffers
+        self.buffer_count = buffer_count
+        self.requests = requests
+
+
 class Operation:
     """
     Class that describes supported operations.

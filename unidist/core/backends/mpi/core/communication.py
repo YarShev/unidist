@@ -514,7 +514,9 @@ def send_complex_data(comm, data, dest_rank):
     return s_data, raw_buffers, buffer_count
 
 
-def _isend_complex_data_impl(comm, s_data, raw_buffers, buffer_count, dest_rank):
+def _isend_complex_data_impl(
+    comm, s_data, raw_buffers, buffer_count, data_id, dest_rank
+):
     """
     Send serialized complex data.
 
@@ -550,6 +552,7 @@ def _isend_complex_data_impl(comm, s_data, raw_buffers, buffer_count, dest_rank)
         "s_data_len": len(s_data),
         "buffer_count": buffer_count,
         "raw_buffers_len": [len(sbuf) for sbuf in raw_buffers],
+        "id": data_id,
     }
 
     h1 = comm.isend(info, dest=dest_rank, tag=common.MPITag.OBJECT)
@@ -565,7 +568,7 @@ def _isend_complex_data_impl(comm, s_data, raw_buffers, buffer_count, dest_rank)
     return handlers
 
 
-def isend_complex_data(comm, data, dest_rank):
+def isend_complex_data(comm, operation_data, dest_rank):
     """
     Send the data that consists of different user provided complex types, lambdas and buffers in a non-blocking way.
 
@@ -598,19 +601,22 @@ def isend_complex_data(comm, data, dest_rank):
     """
     handlers = []
 
+    data_id = operation_data.get("id")
     serializer = ComplexDataSerializer()
     # Main job
-    s_data = serializer.serialize(data)
+    s_data = serializer.serialize(operation_data)
     # Retrive the metadata
     raw_buffers = serializer.buffers
     buffer_count = serializer.buffer_count
 
     # Send message pack bytestring
     handlers.extend(
-        _isend_complex_data_impl(comm, s_data, raw_buffers, buffer_count, dest_rank)
+        _isend_complex_data_impl(
+            comm, s_data, raw_buffers, buffer_count, data_id, dest_rank
+        )
     )
 
-    return handlers, s_data, raw_buffers, buffer_count
+    return handlers, s_data, raw_buffers, buffer_count, data_id
 
 
 def recv_complex_data(comm, source_rank):
@@ -650,6 +656,65 @@ def recv_complex_data(comm, source_rank):
 
     # Start unpacking
     return deserializer.deserialize(msgpack_buffer)
+
+
+def irecv_complex_data(comm, source_rank):
+    """
+    Receive the data that may consist of different user provided complex types, lambdas and buffers.
+
+    The data is de-serialized from received buffer.
+
+    Parameters
+    ----------
+    comm : object
+        MPI communicator object.
+    source_rank : int
+        Source MPI process to receive data from.
+
+    Returns
+    -------
+    object
+        Received data object from another MPI process.
+
+    Notes
+    -----
+    * The special tags are used for this communication, namely,
+    ``common.MPITag.OBJECT`` and ``common.MPITag.BUFFER``.
+    """
+    info = comm.recv(source=source_rank, tag=common.MPITag.OBJECT)
+    msgpack_buffer = bytearray(info["s_data_len"])
+    buffer_count = info["buffer_count"]
+    raw_buffers = list(map(bytearray, info["raw_buffers_len"]))
+    data_id = info["id"]
+    requests = []
+    with pkl5._bigmpi as bigmpi:
+        requests.append(
+            comm.Irecv(
+                bigmpi(msgpack_buffer), source=source_rank, tag=common.MPITag.BUFFER
+            )
+        )
+        for rbuf in raw_buffers:
+            requests.append(
+                comm.Irecv(bigmpi(rbuf), source=source_rank, tag=common.MPITag.BUFFER)
+            )
+
+    is_request_ready = MPI.Request.Testall(requests)
+    if is_request_ready:
+        # Set the necessary metadata for unpacking
+        deserializer = ComplexDataSerializer(raw_buffers, buffer_count)
+
+        # Start unpacking
+        return deserializer.deserialize(msgpack_buffer)
+    else:
+        return {
+            "id": data_id,
+            "data": common.PendingRequest(
+                msgpack_buffer,
+                raw_buffers,
+                buffer_count,
+                requests,
+            ),
+        }
 
 
 # ---------- #
@@ -770,16 +835,17 @@ def isend_complex_operation(
         s_data = operation_data["s_data"]
         raw_buffers = operation_data["raw_buffers"]
         buffer_count = operation_data["buffer_count"]
+        data_id = operation_data["id"]
 
         h2_list = _isend_complex_data_impl(
-            comm, s_data, raw_buffers, buffer_count, dest_rank
+            comm, s_data, raw_buffers, buffer_count, data_id, dest_rank
         )
         handlers.extend(h2_list)
 
         return handlers, None
     else:
         # Serialize and send the data
-        h2_list, s_data, raw_buffers, buffer_count = isend_complex_data(
+        h2_list, s_data, raw_buffers, buffer_count, data_id = isend_complex_data(
             comm, operation_data, dest_rank
         )
         handlers.extend(h2_list)
@@ -787,6 +853,7 @@ def isend_complex_operation(
             "s_data": s_data,
             "raw_buffers": raw_buffers,
             "buffer_count": buffer_count,
+            "id": data_id,
         }
 
 

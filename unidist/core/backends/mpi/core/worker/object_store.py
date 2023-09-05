@@ -3,6 +3,20 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import weakref
+
+try:
+    import mpi4py
+except ImportError:
+    raise ImportError(
+        "Missing dependency 'mpi4py'. Use pip or conda to install it."
+    ) from None
+
+
+# TODO: Find a way to move this after all imports
+mpi4py.rc(recv_mprobe=False, initialize=False)
+from mpi4py import MPI  # noqa: E402
+
+from unidist.core.backends.mpi.core.serialization import ComplexDataSerializer
 import unidist.core.backends.mpi.core.common as common
 import unidist.core.backends.mpi.core.communication as communication
 
@@ -78,7 +92,7 @@ class ObjectStore:
         """
         self._data_owner_map[data_id] = rank
 
-    def get(self, data_id):
+    def get(self, data_id, force=False):
         """
         Get the data from a local dictionary.
 
@@ -92,7 +106,27 @@ class ObjectStore:
         object
             Return local data associated with `data_id`.
         """
-        return self._data_map[data_id]
+        data = self._data_map[data_id]
+        if isinstance(data, common.PendingRequest):
+            if force:
+                MPI.Request.Waitall(data.requests)
+                is_ready = True
+            else:
+                is_ready = MPI.Request.Testall(data.requests)
+            if is_ready:
+                deserializer = ComplexDataSerializer(
+                    data.raw_buffers, data.buffer_count
+                )
+                data = deserializer.deserialize(data.msgpack_buffer)["data"]
+                self._data_map[data_id] = data
+                from unidist.core.backends.mpi.core.worker.task_store import TaskStore
+                task_store = TaskStore.get_instance()
+                task_store.check_pending_tasks()
+                task_store.check_pending_actor_tasks()
+                return data
+            else:
+                return data
+        return data
 
     def get_data_owner(self, data_id):
         """
@@ -180,8 +214,10 @@ class ObjectStore:
         The actual data will be collected later when there is no weak or
         strong reference to data in the current worker.
         """
-        for data_id in cleanup_list:
-            self._data_id_map.pop(data_id, None)
+        # for data_id in cleanup_list:
+        #     data = self.get(data_id)
+        #     if not isinstance(data, common.PendingRequest):
+        #         self._data_id_map.pop(data_id, None)
 
     def cache_serialized_data(self, data_id, data):
         """

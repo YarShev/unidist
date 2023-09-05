@@ -187,7 +187,9 @@ class TaskStore:
             object_store = ObjectStore.get_instance()
             arg = object_store.get_unique_data_id(arg)
             if object_store.contains(arg):
-                value = ObjectStore.get_instance().get(arg)
+                value = object_store.get(arg, force=False)
+                if isinstance(value, common.PendingRequest):
+                    return arg, True
                 # Data is already local or was pushed from master
                 return value, False
             elif object_store.contains_data_owner(arg):

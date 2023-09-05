@@ -253,7 +253,7 @@ class RequestStore:
             if source_rank == communication.MPIRank.ROOT or is_blocking_op:
                 # The controller or a requesting worker is blocked by the request
                 # which should be processed immediatly
-                operation_data = object_store.get(data_id)
+                operation_data = object_store.get(data_id, force=True)
                 # We use a blocking send here because the receiver is waiting for the result.
                 communication.send_complex_data(
                     mpi_state.comm,
@@ -276,7 +276,7 @@ class RequestStore:
                 else:
                     operation_data = {
                         "id": data_id,
-                        "data": object_store.get(data_id),
+                        "data": object_store.get(data_id, force=True),
                     }
                     # Async send to avoid possible dead-lock between workers
                     h_list, serialized_data = communication.isend_complex_operation(

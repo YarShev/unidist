@@ -13,6 +13,7 @@ except ImportError:
         "Missing dependency 'mpi4py'. Use pip or conda to install it."
     ) from None
 
+from unidist.core.backends.mpi.core.serialization import ComplexDataSerializer
 import unidist.core.backends.mpi.core.common as common
 import unidist.core.backends.mpi.core.communication as communication
 from unidist.core.backends.mpi.core.worker.object_store import ObjectStore
@@ -98,6 +99,17 @@ async def worker_loop():
         )(mpi_state.comm)
         w_logger.debug("common.Operation processing - {}".format(operation_type))
 
+        for data_id, data in object_store._data_map.copy().items():
+            if isinstance(data, common.PendingRequest):
+                is_ready = MPI.Request.Testall(data.requests)
+                if is_ready:
+                    deserializer = ComplexDataSerializer(
+                        data.raw_buffers, data.buffer_count
+                    )
+                    data = deserializer.deserialize(data.msgpack_buffer)["data"]
+                    object_store._data_map[data_id] = data
+                    task_store.check_pending_tasks()
+                    task_store.check_pending_actor_tasks()
         # Proceed the request
         if operation_type == common.Operation.EXECUTE:
             request = communication.recv_complex_data(mpi_state.comm, source_rank)
@@ -119,7 +131,7 @@ async def worker_loop():
                 )
 
         elif operation_type == common.Operation.PUT_DATA:
-            request = communication.recv_complex_data(mpi_state.comm, source_rank)
+            request = communication.irecv_complex_data(mpi_state.comm, source_rank)
             if not ready_to_shutdown_posted:
                 w_logger.debug(
                     "PUT (RECV) {} id from {} rank".format(
