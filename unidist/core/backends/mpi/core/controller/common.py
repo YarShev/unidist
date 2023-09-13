@@ -140,9 +140,15 @@ def pull_data(comm, owner_rank):
             "data": data,
         }
     elif info_package["package_type"] == common.MetadataPackage.LOCAL_DATA:
-        return communication.recv_complex_data(
+        local_store = LocalObjectStore.get_instance()
+        data_id = local_store.get_unique_data_id(info_package["id"])
+        data = communication.recv_complex_data(
             comm, owner_rank, info_package=info_package
         )
+        return {
+            "id": data_id,
+            "data": data,
+        }
     else:
         raise ValueError("Unexpected package of data info!")
 
@@ -251,7 +257,7 @@ def _push_local_data(dest_rank, data_id, is_blocking_op, is_serialized):
             )
             async_operations.extend(h_list)
 
-        if not is_serialized:
+        if not is_serialized or not local_store.is_already_serialized(data_id):
             local_store.cache_serialized_data(data_id, serialized_data)
 
         #  Remember pushed id

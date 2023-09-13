@@ -26,7 +26,10 @@ from unidist.config.backends.mpi.envvars import (
     MpiBackoff,
 )
 from unidist.core.backends.mpi.core import common, communication
-from unidist.core.backends.mpi.core.serialization import ComplexDataSerializer
+from unidist.core.backends.mpi.core.serialization import (
+    ComplexDataSerializer,
+    serialize_complex_data,
+)
 
 # TODO: Find a way to move this after all imports
 mpi4py.rc(recv_mprobe=False, initialize=False)
@@ -429,7 +432,7 @@ class SharedObjectStore:
             write_to(
                 raw_buffer,
                 self.shared_buffer[raw_buffer_first_index:raw_buffer_last_index],
-                6
+                6,
             )
             # self.shared_buffer[
             #     raw_buffer_first_index:raw_buffer_last_index
@@ -656,7 +659,7 @@ class SharedObjectStore:
                 )
                 raise RuntimeError("Unexpected data_id for cleanup shared memory")
 
-    def put(self, data_id, data):
+    def put(self, data_id, data, serialized_data=None):
         """
         Put data into shared memory.
 
@@ -668,17 +671,15 @@ class SharedObjectStore:
         """
         mpi_state = communication.MPIState.get_instance()
 
-        # serialize data
-        serializer = ComplexDataSerializer()
-        s_data = serializer.serialize(data)
-        raw_buffers = serializer.buffers
-        buffer_count = serializer.buffer_count
-        data_size = len(s_data) + sum([len(buf) for buf in raw_buffers])
-        serialized_data = {
-            "s_data": s_data,
-            "raw_buffers": raw_buffers,
-            "buffer_count": buffer_count,
-        }
+        if serialized_data:
+            data_size = len(serialized_data["s_data"]) + sum(
+                [len(buf) for buf in serialized_data["raw_buffers"]]
+            )
+        else:
+            serialized_data = serialize_complex_data(data)
+            data_size = len(serialized_data["s_data"]) + sum(
+                [len(buf) for buf in serialized_data["raw_buffers"]]
+            )
 
         # reserve shared memory
         reservation_data = communication.send_reserve_operation(

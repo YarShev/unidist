@@ -8,6 +8,10 @@ import inspect
 import time
 import weakref
 
+from unidist.core.backends.mpi.core.serialization import (
+    serialize_complex_data,
+    deserialize_complex_data,
+)
 from unidist.core.backends.common.data_id import is_data_id
 import unidist.core.backends.mpi.core.common as common
 import unidist.core.backends.mpi.core.communication as communication
@@ -251,12 +255,28 @@ class TaskStore:
         local_store = LocalObjectStore.get_instance()
         if isinstance(data_ids, (list, tuple)):
             for data_id in data_ids:
-                value = local_store.get(data_id)
+                if local_store.is_already_serialized(data_id):
+                    serialized_data = local_store.get_serialized_data(data_id)
+                    value = deserialize_complex_data(
+                        serialized_data["s_data"],
+                        serialized_data["raw_buffers"],
+                        serialized_data["buffer_count"],
+                    )
+                else:
+                    value = local_store.get(data_id)
                 if check_data_out_of_band(value):
                     self.output_depends[data_id] = depends_id
 
         else:
-            value = local_store.get(data_ids)
+            if local_store.is_already_serialized(data_ids):
+                serialized_data = local_store.get_serialized_data(data_ids)
+                value = deserialize_complex_data(
+                    serialized_data["s_data"],
+                    serialized_data["raw_buffers"],
+                    serialized_data["buffer_count"],
+                )
+            else:
+                value = local_store.get(data_ids)
             if check_data_out_of_band(value):
                 self.output_depends[data_ids] = depends_id
 
@@ -280,6 +300,7 @@ class TaskStore:
         Exceptions are stored in output data IDs as value.
         """
         local_store = LocalObjectStore.get_instance()
+        shared_store = SharedObjectStore.get_instance()
         completed_data_ids = []
         if inspect.iscoroutinefunction(task):
 
@@ -326,10 +347,30 @@ class TaskStore:
                             for idx, (output_id, value) in enumerate(
                                 zip(output_data_ids, output_values)
                             ):
+                                serialized_data = serialize_complex_data(value)
+                                local_store.cache_serialized_data(
+                                    output_id, serialized_data
+                                )
                                 local_store.put(output_id, value)
+                                if shared_store.should_be_shared(value):
+                                    shared_store.put(
+                                        output_id,
+                                        value,
+                                        serialized_data=serialized_data,
+                                    )
                                 completed_data_ids[idx] = output_id
                         else:
+                            serialized_data = serialize_complex_data(output_values)
+                            local_store.cache_serialized_data(
+                                output_data_ids, serialized_data
+                            )
                             local_store.put(output_data_ids, output_values)
+                            if shared_store.should_be_shared(output_values):
+                                shared_store.put(
+                                    output_data_ids,
+                                    output_values,
+                                    serialized_data=serialized_data,
+                                )
                             completed_data_ids = [output_data_ids]
 
                 RequestStore.get_instance().check_pending_get_requests(output_data_ids)
@@ -395,10 +436,28 @@ class TaskStore:
                         for idx, (output_id, value) in enumerate(
                             zip(output_data_ids, output_values)
                         ):
+                            serialized_data = serialize_complex_data(value)
+                            local_store.cache_serialized_data(
+                                output_id, serialized_data
+                            )
                             local_store.put(output_id, value)
+                            if shared_store.should_be_shared(value):
+                                shared_store.put(
+                                    output_id, value, serialized_data=serialized_data
+                                )
                             completed_data_ids[idx] = output_id
                     else:
+                        serialized_data = serialize_complex_data(output_values)
+                        local_store.cache_serialized_data(
+                            output_data_ids, serialized_data
+                        )
                         local_store.put(output_data_ids, output_values)
+                        if shared_store.should_be_shared(output_values):
+                            shared_store.put(
+                                output_data_ids,
+                                output_values,
+                                serialized_data=serialized_data,
+                            )
                         completed_data_ids = [output_data_ids]
             RequestStore.get_instance().check_pending_get_requests(output_data_ids)
             # Monitor the task execution.
@@ -433,7 +492,7 @@ class TaskStore:
         # Parse request
         local_store = LocalObjectStore.get_instance()
         shared_store = SharedObjectStore.get_instance()
-        task = request["task"]
+        task = local_store.get(request["task"])
         args = request["args"]
         kwargs = request["kwargs"]
         output_ids = request["output"]

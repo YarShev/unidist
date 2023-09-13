@@ -19,6 +19,7 @@ from unidist.config import MpiBackoff
 from unidist.core.backends.mpi.core.serialization import (
     ComplexDataSerializer,
     SimpleDataSerializer,
+    deserialize_complex_data,
 )
 import unidist.core.backends.mpi.core.common as common
 
@@ -737,11 +738,7 @@ def recv_complex_data(comm, source_rank, info_package):
         for rbuf in raw_buffers:
             comm.Recv(bigmpi(rbuf), source=source_rank, tag=common.MPITag.BUFFER)
 
-    # Set the necessary metadata for unpacking
-    deserializer = ComplexDataSerializer(raw_buffers, buffer_count)
-
-    # Start unpacking
-    return deserializer.deserialize(msgpack_buffer)
+    return deserialize_complex_data(msgpack_buffer, raw_buffers, buffer_count)
 
 
 # ---------- #

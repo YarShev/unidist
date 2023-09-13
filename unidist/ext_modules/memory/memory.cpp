@@ -27,7 +27,7 @@ namespace unidist {
     auto start = timeSinceEpochMillisec();
 
     std::thread::id this_id = std::this_thread::get_id();
- 
+
     // std::this_thread::sleep_for(500ms);
     std::memcpy(dest, src, count);
     auto end = timeSinceEpochMillisec();

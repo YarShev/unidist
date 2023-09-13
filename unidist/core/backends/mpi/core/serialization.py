@@ -242,7 +242,8 @@ class ComplexDataSerializer:
             return pkl.loads(obj["as_bytes"])
         elif "__pickle5_custom__" in obj:
             frame = pkl.loads(obj["as_bytes"], buffers=self.buffers)
-            del self.buffers[: self.buffer_count.pop(0)]
+            if self.buffer_count:
+                del self.buffers[: self.buffer_count.pop(0)]
             return frame
         else:
             return obj
@@ -340,3 +341,26 @@ class SimpleDataSerializer:
             Original reconstructed object.
         """
         return pkl.loads(data)
+
+
+def serialize_complex_data(data):
+    serializer = ComplexDataSerializer()
+    s_data = serializer.serialize(data)
+    raw_buffers = serializer.buffers
+    buffer_count = serializer.buffer_count
+    serialized_data = {
+        "s_data": s_data,
+        "raw_buffers": raw_buffers,
+        "buffer_count": buffer_count,
+    }
+    return serialized_data
+
+
+def deserialize_complex_data(s_data, raw_buffers, buffer_count):
+    deserializer = ComplexDataSerializer(raw_buffers, buffer_count)
+    gc.disable()  # Performance optimization for msgpack
+    unpacked_data = msgpack.unpackb(
+        s_data, object_hook=deserializer._decode_custom, strict_map_key=False
+    )
+    gc.enable()
+    return unpacked_data
