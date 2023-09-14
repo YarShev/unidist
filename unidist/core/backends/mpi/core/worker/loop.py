@@ -116,7 +116,10 @@ async def worker_loop():
                     task_store.check_pending_tasks()
 
         elif operation_type == common.Operation.GET:
-            request = communication.mpi_recv_object(mpi_state.comm, source_rank)
+            request = communication.mpi_irecv_object(mpi_state.comm, source_rank)
+            w_logger.debug("before wait")
+            request = MPI.Request.wait(request)
+            w_logger.debug("after wait")
             if request is not None and not ready_to_shutdown_posted:
                 data_id = local_store.get_unique_data_id(request["id"])
                 request_store.process_get_request(

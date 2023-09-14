@@ -162,7 +162,7 @@ class LocalObjectStore:
         We need to use a unique data ID reference for the garbage colleactor to work correctly.
         """
         if communication.MPIState.get_instance().is_root_process():
-            # Root process must not have a strong references and user always have actual data_id
+            # Root process must not have a strong references and user always has actual data_id
             return data_id
         if data_id not in self._data_id_map:
             self._data_id_map[data_id] = data_id

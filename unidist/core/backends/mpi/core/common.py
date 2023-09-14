@@ -22,6 +22,14 @@ mpi4py.rc(recv_mprobe=False, initialize=False)
 from mpi4py import MPI  # noqa: E402
 
 
+class PendingRequest:
+    def __init__(self, msgpack_buffer, buffer_count, raw_buffers, requests):
+        self.msgpack_buffer = msgpack_buffer
+        self.buffer_count = buffer_count
+        self.raw_buffers = raw_buffers
+        self.requests = requests
+
+
 class Operation:
     """
     Class that describes supported operations.
