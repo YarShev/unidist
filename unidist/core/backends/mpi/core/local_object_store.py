@@ -9,6 +9,7 @@ from collections import defaultdict
 
 import unidist.core.backends.mpi.core.common as common
 import unidist.core.backends.mpi.core.communication as communication
+from unidist.core.backends.mpi.core.serialization import deserialize_complex_data
 
 
 class LocalObjectStore:
@@ -23,8 +24,10 @@ class LocalObjectStore:
     __instance = None
 
     def __init__(self):
-        # Add local data {DataID : Data}
-        self._data_map = weakref.WeakKeyDictionary()
+        # Local serialized data map {DataID : serialized_data}
+        self._serialized_data_map = weakref.WeakKeyDictionary()
+        # Local deserialized data map {DataID : deserialized_data}
+        self._deserialized_data_map = weakref.WeakKeyDictionary()
         # "strong" references to data IDs {DataID : DataID}
         # we are using dict here to improve performance when getting an element from it,
         # whereas other containers would require O(n) complexity
@@ -35,8 +38,6 @@ class LocalObjectStore:
         self._sent_data_map = defaultdict(set)
         # Data id generator
         self._data_id_counter = 0
-        # Data serialized cache
-        self._serialization_cache = weakref.WeakKeyDictionary()
 
     @classmethod
     def get_instance(cls):
@@ -60,9 +61,22 @@ class LocalObjectStore:
         data_id : unidist.core.backends.common.data_id.DataID
             An ID to data.
         data : object
-            Data to be put.
+            Serialized data to be put.
         """
-        self._data_map[data_id] = data
+        self._serialized_data_map[data_id] = data
+
+    def put_deserialized_data(self, data_id, data):
+        """
+        Put `data` to internal dictionary.
+
+        Parameters
+        ----------
+        data_id : unidist.core.backends.common.data_id.DataID
+            An ID to data.
+        data : object
+            Deserialized data to be put for caching purposes.
+        """
+        self._deserialized_data_map[data_id] = data
 
     def put_data_owner(self, data_id, rank):
         """
@@ -91,7 +105,19 @@ class LocalObjectStore:
         object
             Return local data associated with `data_id`.
         """
-        return self._data_map[data_id]
+        if data_id in self._deserialized_data_map:
+            return self._deserialized_data_map[data_id]
+        # we have to make a shallow copy to prevent data loss,
+        # which may happen during deserialization
+        serialized_data = self._serialized_data_map[data_id].copy()
+        value = deserialize_complex_data(
+            serialized_data["s_data"],
+            serialized_data["raw_buffers"],
+            serialized_data["buffer_count"],
+        )
+        # Cache deserialized data
+        self._deserialized_data_map[data_id] = value
+        return value
 
     def get_data_owner(self, data_id):
         """
@@ -123,7 +149,7 @@ class LocalObjectStore:
         bool
             Return the status if an object exist in local dictionary.
         """
-        return data_id in self._data_map
+        return data_id in self._serialized_data_map or data_id in self._deserialized_data_map
 
     def contains_data_owner(self, data_id):
         """
@@ -268,35 +294,6 @@ class LocalObjectStore:
             rank in self._sent_data_map[data_id]
         )
 
-    def cache_serialized_data(self, data_id, data):
-        """
-        Save serialized object for this `data_id`.
-
-        Parameters
-        ----------
-        data_id : unidist.core.backends.common.data_id.DataID
-            An ID to data.
-        data : object
-            Serialized data to cache.
-        """
-        self._serialization_cache[data_id] = data
-
-    def is_already_serialized(self, data_id):
-        """
-        Check if the data on this `data_id` is already serialized.
-
-        Parameters
-        ----------
-        data_id : unidist.core.backends.common.data_id.DataID
-            An ID to data.
-
-        Returns
-        -------
-        bool
-            ``True`` if the data is already serialized.
-        """
-        return data_id in self._serialization_cache
-
     def get_serialized_data(self, data_id):
         """
         Get serialized data on this `data_id`.
@@ -311,4 +308,4 @@ class LocalObjectStore:
         object
             Cached serialized data associated with `data_id`.
         """
-        return self._serialization_cache[data_id]
+        return self._serialized_data_map[data_id]

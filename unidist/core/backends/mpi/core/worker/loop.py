@@ -22,6 +22,7 @@ from unidist.core.backends.mpi.core.worker.task_store import TaskStore
 from unidist.core.backends.mpi.core.async_operations import AsyncOperations
 from unidist.core.backends.mpi.core.controller.common import pull_data
 from unidist.core.backends.mpi.core.shared_object_store import SharedObjectStore
+from unidist.core.backends.mpi.core.serialization import serialize_complex_data
 
 # TODO: Find a way to move this after all imports
 mpi4py.rc(recv_mprobe=False, initialize=False)
@@ -86,6 +87,7 @@ async def worker_loop():
     """
     task_store = TaskStore.get_instance()
     local_store = LocalObjectStore.get_instance()
+    shared_store = SharedObjectStore.get_instance()
     request_store = RequestStore.get_instance()
     async_operations = AsyncOperations.get_instance()
     ready_to_shutdown_posted = False
@@ -105,7 +107,7 @@ async def worker_loop():
 
         # Proceed the request
         if operation_type == common.Operation.EXECUTE:
-            request = pull_data(mpi_state.comm, source_rank)
+            request = pull_data(mpi_state.comm, source_rank)["data"]
             if not ready_to_shutdown_posted:
                 # Execute the task if possible
                 pending_request = task_store.process_task_request(request)
@@ -124,7 +126,14 @@ async def worker_loop():
                 )
 
         elif operation_type == common.Operation.PUT_DATA:
-            request = pull_data(mpi_state.comm, source_rank)
+            info_package = communication.mpi_recv_object(mpi_state.comm, source_rank)
+            data = communication.recv_complex_data(
+                mpi_state.comm,
+                source_rank,
+                info_package,
+                return_as_serialized=True
+            )
+            request = {"id": info_package["id"], "data": data}
             if not ready_to_shutdown_posted:
                 w_logger.debug(
                     "PUT (RECV) {} id from {} rank".format(
@@ -173,7 +182,7 @@ async def worker_loop():
                 request_store.process_wait_request(request["id"])
 
         elif operation_type == common.Operation.ACTOR_CREATE:
-            request = pull_data(mpi_state.comm, source_rank)
+            request = pull_data(mpi_state.comm, source_rank)["data"]
             if not ready_to_shutdown_posted:
                 cls = request["class"]
                 args = request["args"]
@@ -182,11 +191,14 @@ async def worker_loop():
                 actor_map[handler] = cls(*args, **kwargs)
 
         elif operation_type == common.Operation.ACTOR_EXECUTE:
-            request = pull_data(mpi_state.comm, source_rank)
+            request = pull_data(mpi_state.comm, source_rank)["data"]
             if not ready_to_shutdown_posted:
                 # Prepare the data
                 # Actor method here is a data id so we have to retrieve it from the storage
-                method_name = local_store.get(request["task"])
+                if shared_store.contains(request["task"]):
+                    method_name = shared_store.get(request["task"])
+                elif local_store.contains(request["task"]):
+                    method_name = local_store.get(request["task"])
                 handler = request["handler"]
                 actor_method = getattr(actor_map[handler], method_name)
                 request["task"] = actor_method

@@ -7,6 +7,7 @@ from collections import defaultdict
 import unidist.core.backends.mpi.core.common as common
 import unidist.core.backends.mpi.core.communication as communication
 from unidist.core.backends.mpi.core.local_object_store import LocalObjectStore
+from unidist.core.backends.mpi.core.shared_object_store import SharedObjectStore
 from unidist.core.backends.mpi.core.controller.common import push_data
 
 
@@ -213,15 +214,10 @@ class RequestStore:
         -----
         Only ROOT rank is supported for now, therefore no rank argument needed.
         """
-        if LocalObjectStore.get_instance().contains(data_id):
-            # Executor wait just for signal
-            # We use a blocking send here because the receiver is waiting for the result.
-            communication.mpi_send_object(
-                communication.MPIState.get_instance().comm,
-                data_id,
-                communication.MPIRank.ROOT,
-            )
-            logger.debug("Wait data {} id is ready".format(data_id._id))
+        local_store = LocalObjectStore.get_instance()
+        shared_store = SharedObjectStore.get_instance()
+        if shared_store.contains(data_id) or local_store.contains(data_id):
+            push_data(communication.MPIRank.ROOT, data_id, is_blocking_op=True)
         else:
             self.put(data_id, communication.MPIRank.ROOT, self.WAIT)
             logger.debug("Pending wait request {} id".format(data_id._id))
@@ -248,7 +244,8 @@ class RequestStore:
         Request is asynchronous, no wait for the data sending.
         """
         local_store = LocalObjectStore.get_instance()
-        if local_store.contains(data_id):
+        shared_store = SharedObjectStore.get_instance()
+        if shared_store.contains(data_id) or local_store.contains(data_id):
             push_data(
                 source_rank,
                 data_id,

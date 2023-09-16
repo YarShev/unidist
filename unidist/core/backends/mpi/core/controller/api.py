@@ -18,6 +18,7 @@ except ImportError:
         "Missing dependency 'mpi4py'. Use pip or conda to install it."
     ) from None
 
+from unidist.core.backends.mpi.core.serialization import serialize_complex_data
 from unidist.core.backends.mpi.core.shared_object_store import SharedObjectStore
 from unidist.core.backends.mpi.core.local_object_store import LocalObjectStore
 from unidist.core.backends.mpi.core.controller.garbage_collector import (
@@ -369,10 +370,13 @@ def put(data):
     """
     local_store = LocalObjectStore.get_instance()
     shared_store = SharedObjectStore.get_instance()
+
     data_id = local_store.generate_data_id(garbage_collector)
-    local_store.put(data_id, data)
+    serialized_data = serialize_complex_data(data)
     if shared_store.is_allocated():
-        shared_store.put(data_id, data)
+        shared_store.put(data_id, serialized_data)
+    else:
+        local_store.put(data_id, serialized_data)
 
     logger.debug("PUT {} id".format(data_id._id))
 
@@ -394,9 +398,12 @@ def get(data_ids):
         A Python object.
     """
     local_store = LocalObjectStore.get_instance()
+    shared_store = SharedObjectStore.get_instance()
 
     def get_impl(data_id):
-        if local_store.contains(data_id):
+        if shared_store.contains(data_id):
+            value = shared_store.get(data_id)
+        elif local_store.contains(data_id):
             value = local_store.get(data_id)
         else:
             value = request_worker_data(data_id)
@@ -451,10 +458,11 @@ def wait(data_ids, num_returns=1):
     pending_returns = num_returns
     ready = []
     local_store = LocalObjectStore.get_instance()
+    shared_store = SharedObjectStore.get_instance()
 
     logger.debug("WAIT {} ids".format(common.unwrapped_data_ids_list(data_ids)))
     for data_id in not_ready:
-        if local_store.contains(data_id):
+        if shared_store.contains(data_id) or local_store.contains(data_id):
             ready.append(data_id)
             not_ready.remove(data_id)
             pending_returns -= 1
@@ -545,13 +553,14 @@ def submit(task, *args, num_returns=1, **kwargs):
     unwrapped_args = [common.unwrap_data_ids(arg) for arg in args]
     unwrapped_kwargs = {k: common.unwrap_data_ids(v) for k, v in kwargs.items()}
 
-    push_data(dest_rank, common.master_data_ids_to_base(task))
+    task_base_id = common.master_data_ids_to_base(task)
+    push_data(dest_rank, task_base_id)
     push_data(dest_rank, unwrapped_args)
     push_data(dest_rank, unwrapped_kwargs)
 
     operation_type = common.Operation.EXECUTE
     operation_data = {
-        "task": task,
+        "task": task_base_id,
         "args": unwrapped_args,
         "kwargs": unwrapped_kwargs,
         "output": common.master_data_ids_to_base(output_ids),
@@ -562,6 +571,7 @@ def submit(task, *args, num_returns=1, **kwargs):
         operation_type,
         operation_data,
         dest_rank,
+        is_serialized=False,
     )
     async_operations.extend(h_list)
 
