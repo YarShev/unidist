@@ -456,7 +456,7 @@ class SharedObjectStore:
         self, comm, data_id, owner_rank, first_index, last_index, service_index
     ):
         """
-        Receive shared data from another host including the owner's rank
+        Receive shared data from another host including the owner's rank.
 
         Parameters
         ----------
@@ -686,7 +686,7 @@ class SharedObjectStore:
         # put shared info
         self._put_shared_info(data_id, shared_info)
 
-    def get(self, data_id, owner_rank, shared_info):
+    def retrieve_data(self, data_id, owner_rank, shared_info):
         """
         Get data from another worker using shared memory.
 
@@ -744,6 +744,23 @@ class SharedObjectStore:
         self._increment_ref_number(data_id, shared_info["service_index"])
 
         # read from shared buffer and deserialized
+        return self._read_from_shared_buffer(data_id, shared_info)
+
+    def get(self, data_id):
+        """
+        Get shared data from shared memory.
+
+        Parameters
+        ----------
+        data_id : unidist.core.backends.common.data_id.DataID
+            An ID to data.
+        owner_rank : int
+            The rank that sent the data.
+        shared_info : dict
+            The necessary information to properly deserialize data from shared memory.
+        """
+        shared_info = self.get_shared_info(data_id)
+        self._increment_ref_number(data_id, shared_info["service_index"])
         return self._read_from_shared_buffer(data_id, shared_info)
 
     def finalize(self):

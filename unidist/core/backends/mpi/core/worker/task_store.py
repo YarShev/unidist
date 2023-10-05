@@ -187,10 +187,15 @@ class TaskStore:
         """
         if is_data_id(arg):
             local_store = LocalObjectStore.get_instance()
+            shared_store = SharedObjectStore.get_instance()
             arg = local_store.get_unique_data_id(arg)
             if local_store.contains(arg):
-                value = LocalObjectStore.get_instance().get(arg)
+                value = local_store.get(arg)
                 # Data is already local or was pushed from master
+                return value, False
+            elif shared_store.contains(arg):
+                value = shared_store.get(arg)
+                local_store.put(arg, value)
                 return value, False
             elif local_store.contains_data_owner(arg):
                 if not RequestStore.get_instance().is_data_already_requested(arg):
@@ -261,9 +266,15 @@ class TaskStore:
                         and len(output_data_ids) > 1
                     ):
                         for output_id in output_data_ids:
+                            serialized_data = serialize_complex_data(e)
                             local_store.put(output_id, e)
+                            local_store.cache_serialized_data(
+                                output_id, serialized_data
+                            )
                     else:
+                        serialized_data = serialize_complex_data(e)
                         local_store.put(output_data_ids, e)
+                        local_store.put(output_data_ids, serialized_data)
                 else:
                     if output_data_ids is not None:
                         if (
@@ -275,26 +286,26 @@ class TaskStore:
                                 zip(output_data_ids, output_values)
                             ):
                                 serialized_data = serialize_complex_data(value)
-                                local_store.put(output_id, value)
                                 if (
                                     shared_store.is_allocated()
                                     and shared_store.should_be_shared(serialized_data)
                                 ):
                                     shared_store.put(output_id, serialized_data)
                                 else:
+                                    local_store.put(output_id, value)
                                     local_store.cache_serialized_data(
                                         output_id, serialized_data
                                     )
                                 completed_data_ids[idx] = output_id
                         else:
                             serialized_data = serialize_complex_data(output_values)
-                            local_store.put(output_data_ids, output_values)
                             if (
                                 shared_store.is_allocated()
                                 and shared_store.should_be_shared(serialized_data)
                             ):
                                 shared_store.put(output_data_ids, serialized_data)
                             else:
+                                local_store.put(output_data_ids, output_values)
                                 local_store.cache_serialized_data(
                                     output_data_ids, serialized_data
                                 )
@@ -350,9 +361,13 @@ class TaskStore:
                     and len(output_data_ids) > 1
                 ):
                     for output_id in output_data_ids:
+                        serialized_data = serialize_complex_data(e)
                         local_store.put(output_id, e)
+                        local_store.cache_serialized_data(output_id, serialized_data)
                 else:
+                    serialized_data = serialize_complex_data(e)
                     local_store.put(output_data_ids, e)
+                    local_store.cache_serialized_data(output_data_ids, serialized_data)
             else:
                 if output_data_ids is not None:
                     if (
@@ -364,26 +379,26 @@ class TaskStore:
                             zip(output_data_ids, output_values)
                         ):
                             serialized_data = serialize_complex_data(value)
-                            local_store.put(output_id, value)
                             if (
                                 shared_store.is_allocated()
                                 and shared_store.should_be_shared(serialized_data)
                             ):
                                 shared_store.put(output_id, serialized_data)
                             else:
+                                local_store.put(output_id, value)
                                 local_store.cache_serialized_data(
                                     output_id, serialized_data
                                 )
                             completed_data_ids[idx] = output_id
                     else:
                         serialized_data = serialize_complex_data(output_values)
-                        local_store.put(output_data_ids, output_values)
                         if (
                             shared_store.is_allocated()
                             and shared_store.should_be_shared(serialized_data)
                         ):
                             shared_store.put(output_data_ids, serialized_data)
                         else:
+                            local_store.put(output_data_ids, output_values)
                             local_store.cache_serialized_data(
                                 output_data_ids, serialized_data
                             )

@@ -402,6 +402,7 @@ def deserialize_complex_data(s_data, raw_buffers, buffer_count):
     -------
     object
         Deserialized data.
+
     Notes
     -----
     Uses msgpack, cloudpickle and pickle libraries.

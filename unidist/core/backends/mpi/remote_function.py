@@ -6,6 +6,7 @@
 
 import unidist.core.backends.mpi.core as mpi
 from unidist.core.backends.mpi.core.local_object_store import LocalObjectStore
+from unidist.core.backends.mpi.core.shared_object_store import SharedObjectStore
 from unidist.core.backends.common.data_id import is_data_id
 from unidist.core.backends.common.utils import unwrap_object_refs
 from unidist.core.base.object_ref import ObjectRef
@@ -77,10 +78,14 @@ class MPIRemoteFunction(RemoteFunction):
         if not is_data_id(self._remote_function):
             self._remote_function = mpi.put(self._remote_function_orig)
         else:
+            local_store = LocalObjectStore.get_instance()
+            shared_store = SharedObjectStore.get_instance()
             # When a worker calls a remote function inside another remote function,
             # we have to again serialize the former remote function and put it into the storage
             # for further correct communication.
-            if not LocalObjectStore.get_instance().contains(self._remote_function):
+            if not shared_store.contains(
+                self._remote_function
+            ) or not local_store.contains(self._remote_function):
                 self._remote_function = mpi.put(self._remote_function_orig)
 
         data_ids = mpi.submit(

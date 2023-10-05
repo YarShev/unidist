@@ -136,7 +136,7 @@ def pull_data(comm, owner_rank):
                 "data": local_store.get(data_id),
             }
 
-        data = shared_store.get(data_id, owner_rank, info_package)
+        data = shared_store.retrieve_data(data_id, owner_rank, info_package)
         local_store.put(data_id, data)
         return {
             "id": data_id,
