@@ -22,11 +22,14 @@ def init_backend():
     backend_name = Backend.get()
 
     if backend_name == BackendName.MPI:
-        from unidist.core.backends.mpi.backend import MPIBackend
-        from unidist.core.backends.mpi.utils import initialize_mpi
+        import threading
 
-        initialize_mpi()
-        backend_cls = MPIBackend()
+        if threading.current_thread() is threading.main_thread():
+            from unidist.core.backends.mpi.backend import MPIBackend
+            from unidist.core.backends.mpi.utils import initialize_mpi
+
+            initialize_mpi()
+            backend_cls = MPIBackend()
     elif backend_name == BackendName.DASK:
         import threading
 
