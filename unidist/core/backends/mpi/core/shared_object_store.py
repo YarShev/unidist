@@ -747,9 +747,9 @@ class SharedObjectStore:
         # put shared info
         self._put_shared_info(data_id, shared_info)
 
-    def get(self, data_id, owner_rank, shared_info):
+    def _get_by_data_id_and_metadata(self, data_id, owner_rank, shared_info):
         """
-        Get data from another worker using shared memory.
+        Get data from the shared object store.
 
         Parameters
         ----------
@@ -759,6 +759,15 @@ class SharedObjectStore:
             The rank that sent the data.
         shared_info : dict
             The necessary information to properly deserialize data from shared memory.
+
+        Returns
+        -------
+        object
+            A Python object.
+
+        Notes
+        -----
+        This method is called for data that has been put by other process.
         """
         mpi_state = communication.MPIState.get_instance()
         s_data_len = shared_info["s_data_len"]
@@ -806,6 +815,55 @@ class SharedObjectStore:
 
         # read from shared buffer and deserialized
         return self._read_from_shared_buffer(data_id, shared_info)
+
+    def _get_by_data_id(self, data_id):
+        """
+        Get data from the shared object store.
+
+        Parameters
+        ----------
+        data_id : unidist.core.backends.mpi.core.common.MpiDataID
+            An ID to data.
+        owner_rank : int
+            The rank that sent the data.
+        shared_info : dict
+            The necessary information to properly deserialize data from shared memory.
+
+        Returns
+        -------
+        object
+            A Python object.
+
+        Notes
+        -----
+        This method is called for data that has been put by the current process.
+        """
+        shared_info = self.get_shared_info(data_id)
+        # increment ref
+        self._increment_ref_number(data_id, shared_info["service_index"])
+        # read from shared buffer and deserialized
+        return self._read_from_shared_buffer(data_id, shared_info)
+
+    def get(self, *args):
+        """
+        Get data from the shared object store.
+
+        Parameters
+        ----------
+        *args : tuple
+            Positional arguments to be passed into implementation specific method.
+
+        Returns
+        -------
+        object
+            A python object.
+        """
+        if len(args) > 1:
+            return self._get_by_data_id_and_metadata(*args)
+        elif len(args) == 1:
+            return self._get_by_data_id(*args)
+        else:
+            raise NotImplementedError(f"There is no implementation for {args}")
 
     def finalize(self):
         """

@@ -144,7 +144,6 @@ def pull_data(comm, owner_rank):
             "data": data,
         }
     elif info_package["package_type"] == common.MetadataPackage.LOCAL_DATA:
-        local_store = LocalObjectStore.get_instance()
         data = communication.recv_complex_data(
             comm, owner_rank, info_package=info_package
         )

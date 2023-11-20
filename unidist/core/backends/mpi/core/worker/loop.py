@@ -86,6 +86,7 @@ async def worker_loop():
     """
     task_store = TaskStore.get_instance()
     local_store = LocalObjectStore.get_instance()
+    shared_store = SharedObjectStore.get_instance()
     request_store = RequestStore.get_instance()
     async_operations = AsyncOperations.get_instance()
 
@@ -186,7 +187,13 @@ async def worker_loop():
             if not ready_to_shutdown_posted:
                 # Prepare the data
                 # Actor method here is a data id so we have to retrieve it from the storage
-                method_name = local_store.get(request["task"])
+                task_data_id = request["task"]
+                if local_store.contains(task_data_id):
+                    method_name = local_store.get(task_data_id)
+                elif shared_store.contains(task_data_id):
+                    method_name = shared_store.get(task_data_id)
+                else:
+                    raise ValueError(f"Expected task data id but got {task_data_id}")
                 handler = request["handler"]
                 actor_method = getattr(actor_map[handler], method_name)
                 request["task"] = actor_method
@@ -220,7 +227,7 @@ async def worker_loop():
             ready_to_shutdown_posted = True
         elif operation_type == common.Operation.SHUTDOWN and ready_to_shutdown_posted:
             w_logger.debug("Exit worker event loop")
-            SharedObjectStore.get_instance().finalize()
+            shared_store.finalize()
             if not MPI.Is_finalized():
                 MPI.Finalize()
             break  # leave event loop and shutdown worker

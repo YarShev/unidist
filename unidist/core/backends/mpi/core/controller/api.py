@@ -386,10 +386,10 @@ def put(data):
 
     data_id = local_store.generate_data_id(garbage_collector)
     serialized_data = serialize_complex_data(data)
-    local_store.put(data_id, data)
     if shared_store.is_allocated():
         shared_store.put(data_id, serialized_data)
     else:
+        local_store.put(data_id, data)
         local_store.cache_serialized_data(data_id, serialized_data)
 
     logger.debug("PUT {} id".format(data_id._id))
@@ -411,6 +411,7 @@ def get(data_ids):
     object
         A Python object.
     """
+    shared_store = SharedObjectStore.get_instance()
     local_store = LocalObjectStore.get_instance()
 
     is_list = isinstance(data_ids, list)
@@ -420,6 +421,9 @@ def get(data_ids):
     def get_impl(data_id):
         if local_store.contains(data_id):
             value = local_store.get(data_id)
+        elif shared_store.contains(data_id):
+            value = shared_store.get(data_id)
+            local_store.put(data_id, value)
         else:
             value = request_worker_data(data_id)
 
@@ -467,10 +471,11 @@ def wait(data_ids, num_returns=1):
     pending_returns = num_returns
     ready = []
     local_store = LocalObjectStore.get_instance()
+    shared_store = SharedObjectStore.get_instance()
 
     logger.debug("WAIT {} ids".format(common.unwrapped_data_ids_list(data_ids)))
     for data_id in not_ready.copy():
-        if local_store.contains(data_id):
+        if local_store.contains(data_id) or shared_store.contains(data_id):
             ready.append(data_id)
             not_ready.remove(data_id)
             pending_returns -= 1
