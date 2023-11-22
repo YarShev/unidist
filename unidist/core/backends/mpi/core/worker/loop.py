@@ -220,8 +220,8 @@ async def worker_loop():
         elif operation_type == common.Operation.SHUTDOWN and ready_to_shutdown_posted:
             w_logger.debug("Exit worker event loop")
             SharedObjectStore.get_instance().finalize()
-            if not MPI.Is_finalized():
-                MPI.Finalize()
+            # if not MPI.Is_finalized():
+            #     MPI.Finalize()
             break  # leave event loop and shutdown worker
         else:
             raise ValueError(f"Unsupported operation: {operation_type}")

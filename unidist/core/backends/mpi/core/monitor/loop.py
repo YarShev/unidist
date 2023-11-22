@@ -262,8 +262,8 @@ def monitor_loop():
             shutdown_workers = len(workers_ready_to_shutdown) == len(mpi_state.workers)
         elif operation_type == common.Operation.SHUTDOWN:
             SharedObjectStore.get_instance().finalize()
-            if not MPI.Is_finalized():
-                MPI.Finalize()
+            # if not MPI.Is_finalized():
+            #     MPI.Finalize()
             break  # leave event loop and shutdown monitoring
         else:
             raise ValueError(f"Unsupported operation: {operation_type}")
@@ -282,6 +282,6 @@ def monitor_loop():
                 communication.MPIRank.ROOT,
             )
             SharedObjectStore.get_instance().finalize()
-            if not MPI.Is_finalized():
-                MPI.Finalize()
+            # if not MPI.Is_finalized():
+            #     MPI.Finalize()
             break  # leave event loop and shutdown monitoring

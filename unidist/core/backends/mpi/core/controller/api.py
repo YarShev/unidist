@@ -238,6 +238,7 @@ def init():
             root=rank,
         )
         comm = intercomm.Merge(high=False)
+        intercomm.Disconnect()
     else:
         if runtime_env and rank != 0:
             for option, value in runtime_env.items():
@@ -248,6 +249,7 @@ def init():
     # path for spawned MPI processes to be merged with the parent communicator
     if parent_comm != MPI.COMM_NULL:
         comm = parent_comm.Merge(high=True)
+        parent_comm.Disconnect()
 
     mpi_state = communication.MPIState.get_instance(comm)
 
@@ -332,8 +334,8 @@ def shutdown():
         if op_type != common.Operation.SHUTDOWN:
             raise ValueError(f"Got wrong operation type {op_type}.")
         SharedObjectStore.get_instance().finalize()
-        if not MPI.Is_finalized():
-            MPI.Finalize()
+        # if not MPI.Is_finalized():
+        #     MPI.Finalize()
 
         logger.debug("Shutdown root")
         is_mpi_shutdown = True
