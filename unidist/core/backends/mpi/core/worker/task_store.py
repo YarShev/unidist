@@ -450,7 +450,20 @@ class TaskStore:
             request["kwargs"] = kwargs
             return request
         else:
+            communication.isend_simple_operation(
+                mpi_state.global_comm,
+                common.Operation.RESERVE_WORKER,
+                mpi_state.global_rank,
+                mpi_state.get_monitor_by_worker_rank(mpi_state.global_rank),
+            )
             self.execute_received_task(output_ids, task, args, kwargs)
+            if not self._pending_tasks_list:
+                communication.isend_simple_operation(
+                    mpi_state.global_comm,
+                    common.Operation.RELEASE_WORKER,
+                    mpi_state.global_rank,
+                    mpi_state.get_monitor_by_worker_rank(mpi_state.global_rank),
+                )
             if output_ids is not None:
                 RequestStore.get_instance().check_pending_get_requests(output_ids)
                 RequestStore.get_instance().check_pending_wait_requests(output_ids)

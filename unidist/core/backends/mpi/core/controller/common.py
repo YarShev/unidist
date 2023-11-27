@@ -108,6 +108,89 @@ class RoundRobin:
         )
 
 
+class AvailableWorkers:
+    __instance = None
+
+    def __init__(self):
+        self.reserved_ranks = []
+        self.mpi_state = communication.MPIState.get_instance()
+        logger.debug(f"AvailableWorkers init for {self.mpi_state.global_rank} rank")
+
+    @classmethod
+    def get_instance(cls):
+        """
+        Get instance of ``AvailableWorkers``.
+
+        Returns
+        -------
+        AvailableWorkers
+        """
+        if cls.__instance is None:
+            cls.__instance = AvailableWorkers()
+        return cls.__instance
+
+    def schedule_rank(self):
+        """
+        Find the next non-reserved rank for task/actor-task execution.
+
+        Returns
+        -------
+        int
+            A rank number.
+        """
+        while True:
+            monitor_rank = self.mpi_state.get_monitor_by_worker_rank(
+                self.mpi_state.global_rank
+            )
+            communication.send_simple_operation(
+                self.mpi_state.global_comm,
+                common.Operation.PICK_WORKER,
+                self.mpi_state.global_rank,
+                monitor_rank,
+            )
+            available_worker = communication.mpi_recv_object(
+                self.mpi_state.global_comm,
+                monitor_rank,
+            )
+            if available_worker not in self.reserved_ranks:
+                return available_worker
+
+    def reserve_rank(self, rank):
+        """
+        Reserve the rank for the actor scheduling.
+
+        This makes the rank unavailable for scheduling a new actor or task
+        until it gets released.
+
+        Parameters
+        ----------
+        rank : int
+            A rank number.
+        """
+        self.reserved_ranks.append(rank)
+        logger.debug(
+            f"AvailableWorkers reserve rank {rank} for actor "
+            + f"on worker with rank {communication.MPIState.get_instance().global_rank}"
+        )
+
+    def release_rank(self, rank):
+        """
+        Release the rank reserved for the actor.
+
+        This makes the rank available for scheduling a new actor or task.
+
+        Parameters
+        ----------
+        rank : int
+            A rank number.
+        """
+        self.reserved_ranks.remove(rank)
+        logger.debug(
+            f"AvailableWorkers release rank {rank} reserved for actor "
+            + f"on worker with rank {communication.MPIState.get_instance().global_rank}"
+        )
+
+
 def pull_data(comm, owner_rank=None):
     """
     Receive data from another MPI process.

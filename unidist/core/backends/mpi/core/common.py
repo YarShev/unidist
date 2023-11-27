@@ -49,22 +49,28 @@ class Operation:
         Create local actor instance.
     ACTOR_EXECUTE : int, default 8
         Execute method of a local actor instance.
-    CLEANUP : int, default 9
+    PICK_WORKER : int, default 9
+        Pick a worker for the task to execute.
+    RESERVE_WORKER : int, default 10
+        Reserve a worker for the task to execute.
+    RELEASE_WORKER : int, default 11
+        Release a worker for the task completed.
+    CLEANUP : int, default 12
         Cleanup local object storage for out-of-scope IDs.
-    TASK_DONE : int, default 10
+    TASK_DONE : int, default 13
         Increment global task counter.
-    GET_TASK_COUNT : int, default 11
+    GET_TASK_COUNT : int, default 14
         Return global task counter to a requester.
-    RESERVE_SHARED_MEMORY : int, default 12
+    RESERVE_SHARED_MEMORY : int, default 15
         Reserve area in shared memory for the data.
-    REQUEST_SHARED_DATA : int, default 13
+    REQUEST_SHARED_DATA : int, default 16
         Return the area in shared memory with the requested data.
-    CANCEL : int, default 14
+    CANCEL : int, default 17
         Send a message to a worker to exit the event loop.
-    READY_TO_SHUTDOWN : int, default 15
+    READY_TO_SHUTDOWN : int, default 18
         Send a message to monitor from a worker,
         which is ready to shutdown.
-    SHUTDOWN : int, default 16
+    SHUTDOWN : int, default 19
         Send a message from monitor to a worker to shutdown.
     """
 
@@ -77,16 +83,19 @@ class Operation:
     WAIT = 6
     ACTOR_CREATE = 7
     ACTOR_EXECUTE = 8
-    CLEANUP = 9
+    PICK_WORKER = 9
+    RESERVE_WORKER = 10
+    RELEASE_WORKER = 11
+    CLEANUP = 12
     ### --- Monitor operations --- ###
-    TASK_DONE = 10
-    GET_TASK_COUNT = 11
-    RESERVE_SHARED_MEMORY = 12
-    REQUEST_SHARED_DATA = 13
+    TASK_DONE = 13
+    GET_TASK_COUNT = 14
+    RESERVE_SHARED_MEMORY = 15
+    REQUEST_SHARED_DATA = 16
     ### --- Common operations --- ###
-    CANCEL = 14
-    READY_TO_SHUTDOWN = 15
-    SHUTDOWN = 16
+    CANCEL = 17
+    READY_TO_SHUTDOWN = 18
+    SHUTDOWN = 19
 
 
 class MPITag:

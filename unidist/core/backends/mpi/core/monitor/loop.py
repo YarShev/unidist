@@ -185,6 +185,10 @@ def monitor_loop():
     # it can exit the program.
     workers_ready_to_shutdown = []
     shutdown_workers = False
+    # workers that are available for tasks to run
+    available_workers = mpi_state.workers
+    # workers that are unavailable for tasks to run
+    unavailable_workers = []
     while True:
         # Listen receive operation from any source
         operation_type, source_rank = communication.mpi_recv_operation(
@@ -193,8 +197,42 @@ def monitor_loop():
         monitor_logger.debug(
             f"common.Operation processing - {operation_type} from {source_rank} rank"
         )
+        if operation_type == common.Operation.PICK_WORKER:
+            source_rank = communication.mpi_recv_object(
+                mpi_state.global_comm, source_rank
+            )
+            if available_workers:
+                available_worker = available_workers.pop(0)
+                available_workers.append(available_worker)
+            elif unavailable_workers:
+                available_worker = unavailable_workers.pop(0)
+                unavailable_workers.append(available_worker)
+            else:
+                available_worker = None
+                raise ValueError(
+                    "There is no any available worker for the task to execute"
+                )
+            monitor_logger.debug(f"source rank {source_rank}")
+            communication.mpi_send_object(
+                mpi_state.global_comm, available_worker, source_rank
+            )
+        elif operation_type == common.Operation.RESERVE_WORKER:
+            source_rank = communication.mpi_recv_object(
+                mpi_state.global_comm, source_rank
+            )
+            if source_rank in available_workers:
+                available_workers.remove(source_rank)
+            unavailable_workers.append(source_rank)
+        elif operation_type == common.Operation.RELEASE_WORKER:
+            source_rank = communication.mpi_recv_object(
+                mpi_state.global_comm, source_rank
+            )
+            if source_rank in available_workers:
+                unavailable_workers.remove(source_rank)
+            unavailable_workers.remove(source_rank)
+            available_workers.append(source_rank)
         # Proceed the request
-        if operation_type == common.Operation.TASK_DONE:
+        elif operation_type == common.Operation.TASK_DONE:
             task_counter.increment()
             output_data_ids = communication.mpi_recv_object(
                 mpi_state.global_comm, source_rank
